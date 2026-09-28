@@ -102,6 +102,41 @@ effects! {
 /// Effect the keyboard boots into / the official tool restores.
 pub const DEFAULT_EFFECT: u8 = 0;
 
+/// Magic header of every 2.4 GHz output report.
+///
+/// The dongle's vendor collection has **no feature reports at all**
+/// (`FeatureReportByteLength == 0`), only 65-byte input/output reports. The
+/// official tool wraps the same logical command into this envelope:
+///
+/// ```text
+///   00 BB AA 99 88 AA <effect> <brightness> <speed> 00 00  ... zero padded
+///   └┬┘ └────┬────┘ └┬┘ └────────────┬─────────────┘
+///  reportid  magic   cmd        same bytes as the wired frame[3..7]
+/// ```
+///
+/// `cmd` is `0xAA` for the lighting command. Both were captured from
+/// ShinetekTools.exe and verified on real hardware.
+pub const MAGIC_24G: [u8; 5] = [0xBB, 0xAA, 0x99, 0x88, 0xAA];
+
+/// Command discriminator for "set lighting" inside a 2.4 GHz envelope.
+pub const CMD_24G_LIGHTING: u8 = 0xAA;
+
+/// Length of a 2.4 GHz output report (report id + 64 bytes).
+pub const REPORT_24G_LEN: usize = 65;
+
+/// Build the 65-byte 2.4 GHz output report for the main lighting.
+pub fn envelope_24g(effect: u8, brightness: u8, speed: u8) -> [u8; REPORT_24G_LEN] {
+    let mut out = [0u8; REPORT_24G_LEN];
+    out[0] = 0x00; // report id
+    out[1..6].copy_from_slice(&MAGIC_24G);
+    out[6] = CMD_24G_LIGHTING;
+    // bytes 7..=9 mirror the wired frame's [4..=6]
+    out[7] = effect;
+    out[8] = brightness.min(MAX_BRIGHTNESS);
+    out[9] = speed.min(MAX_SPEED);
+    out
+}
+
 pub const MAX_BRIGHTNESS: u8 = 5;
 pub const MAX_SPEED: u8 = 2;
 
@@ -135,6 +170,7 @@ pub fn init_output_reports() -> [[u8; 64]; 4] {
 }
 
 /// Turn the backlight off (brightness 0 keeps the current effect selection).
+#[allow(dead_code)]
 pub fn off_frame(effect: u8) -> [u8; 8] {
     lighting_frame(effect, 0, 0)
 }
@@ -169,5 +205,24 @@ mod tests {
         assert_eq!(EFFECTS[0].index, DEFAULT_EFFECT);
         assert_eq!(EFFECTS[0].en, "Steady");
         assert!(EFFECTS[1].hidden);
+    }
+
+    #[test]
+    fn envelope_matches_captured_dongle_traffic() {
+        // captured in 2.4G mode: 踏雪无痕 (effect 10) at full brightness/speed
+        let f = envelope_24g(10, 5, 2);
+        assert_eq!(f.len(), 65);
+        assert_eq!(
+            &f[..11],
+            &[0x00, 0xBB, 0xAA, 0x99, 0x88, 0xAA, 0xAA, 0x0A, 0x05, 0x02, 0x00]
+        );
+        assert!(f[11..].iter().all(|b| *b == 0));
+    }
+
+    #[test]
+    fn envelope_clamps_like_the_wired_frame() {
+        let f = envelope_24g(2, 99, 99);
+        assert_eq!(f[8], MAX_BRIGHTNESS);
+        assert_eq!(f[9], MAX_SPEED);
     }
 }

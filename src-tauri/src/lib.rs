@@ -44,7 +44,7 @@ fn connect(state: State<'_, AppState>, path: String) -> Result<DeviceInfo, Strin
             info.name, info.connection
         ));
     }
-    let dev = AulaDevice::open(&api, &path)?;
+    let dev = AulaDevice::open(&api, &path, info.pid)?;
     dev.init()?;
     *state.device.lock().unwrap() = Some(dev);
     *state.current_effect.lock().unwrap() = protocol::DEFAULT_EFFECT;

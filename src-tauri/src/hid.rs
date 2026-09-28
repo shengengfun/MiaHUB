@@ -181,22 +181,50 @@ pub fn probe_activity(api: &HidApi, path: &str, wait_ms: i32) -> bool {
     matches!(dev.read_timeout(&mut buf, wait_ms), Ok(n) if n > 0)
 }
 
+/// How commands reach the keyboard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub enum LinkMode {
+    /// Wired: 8-byte HID **feature** report, report id 7.
+    WiredFeature,
+    /// 2.4 GHz dongle: the vendor collection declares **no feature reports**
+    /// (`FeatureReportByteLength == 0`), only 65-byte output reports carrying
+    /// the `BB AA 99 88 AA` envelope.
+    DongleOutput,
+}
+
+impl LinkMode {
+    pub fn from_pid(pid: u16) -> Self {
+        if pid == protocol::F3009_DONGLE_PID {
+            LinkMode::DongleOutput
+        } else {
+            LinkMode::WiredFeature
+        }
+    }
+}
+
 /// An open control channel to a keyboard.
 pub struct AulaDevice {
     dev: HidDevice,
     last_write: Instant,
+    mode: LinkMode,
 }
 
 impl AulaDevice {
     /// Open the vendor control collection of the given device path.
-    pub fn open(api: &HidApi, path: &str) -> Result<Self, String> {
+    pub fn open(api: &HidApi, path: &str, pid: u16) -> Result<Self, String> {
         let c_path = CString::new(path).map_err(|e| e.to_string())?;
         let dev = api.open_path(&c_path).map_err(|e| e.to_string())?;
         Ok(Self {
             dev,
             // start in the past so the first write is not delayed
             last_write: Instant::now() - protocol::MIN_SEND_INTERVAL,
+            mode: LinkMode::from_pid(pid),
         })
+    }
+
+    #[allow(dead_code)]
+    pub fn mode(&self) -> LinkMode {
+        self.mode
     }
 
     /// Send the 4 initialisation output reports used by the official tool.
@@ -215,19 +243,29 @@ impl AulaDevice {
         brightness: u8,
         speed: u8,
     ) -> Result<(), String> {
-        let frame = protocol::lighting_frame(effect, brightness, speed);
-        self.send_frame(&frame)
+        match self.mode {
+            LinkMode::WiredFeature => {
+                let frame = protocol::lighting_frame(effect, brightness, speed);
+                self.send_frame(&frame)
+            }
+            LinkMode::DongleOutput => {
+                let frame = protocol::envelope_24g(effect, brightness, speed);
+                self.send_output(&frame)
+            }
+        }
     }
 
     /// Turn the backlight off without changing the selected effect.
     pub fn set_off(&mut self, effect: u8) -> Result<(), String> {
-        let frame = protocol::off_frame(effect);
-        self.send_frame(&frame)
+        self.set_lighting(effect, 0, 0)
     }
 
-    /// Read back the device info frame (the firmware reply is exposed by the
-    /// driver; may be constant on some revisions).
+    /// Read back the device info frame. Only the wired link has feature
+    /// reports, so this is not available over the 2.4 GHz dongle.
     pub fn read_info(&mut self) -> Result<Vec<u8>, String> {
+        if self.mode == LinkMode::DongleOutput {
+            return Err("2.4G 接收器的厂商通道没有 feature report，不支持回读".into());
+        }
         let frame = protocol::read_info_frame();
         self.dev
             .send_feature_report(&frame)
@@ -240,12 +278,24 @@ impl AulaDevice {
         Ok(buf[..n].to_vec())
     }
 
-    /// Throttled feature-report write (>= 100 ms, as the firmware requires).
-    fn send_frame(&mut self, frame: &[u8]) -> Result<(), String> {
+    /// Throttled 65-byte output report (2.4 GHz dongle path).
+    fn send_output(&mut self, frame: &[u8]) -> Result<(), String> {
+        self.wait_for_slot();
+        self.dev.write(frame).map_err(|e| e.to_string())?;
+        self.last_write = Instant::now();
+        Ok(())
+    }
+
+    fn wait_for_slot(&self) {
         let elapsed = self.last_write.elapsed();
         if elapsed < protocol::MIN_SEND_INTERVAL {
             std::thread::sleep(protocol::MIN_SEND_INTERVAL - elapsed);
         }
+    }
+
+    /// Throttled feature-report write (>= 100 ms, as the firmware requires).
+    fn send_frame(&mut self, frame: &[u8]) -> Result<(), String> {
+        self.wait_for_slot();
         self.dev
             .send_feature_report(frame)
             .map_err(|e| e.to_string())?;
@@ -264,6 +314,6 @@ pub fn with_default_device<T>(
         .into_iter()
         .find(|d| d.supported)
         .ok_or_else(|| "no supported AULA keyboard found (connect it with the USB cable)".to_string())?;
-    let mut dev = AulaDevice::open(&api, &target.path)?;
+    let mut dev = AulaDevice::open(&api, &target.path, target.pid)?;
     f(&mut dev)
 }
