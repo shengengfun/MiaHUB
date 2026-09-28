@@ -58,21 +58,21 @@
 /* ── 浅色模式 ───────────────────────────────────────────────────────
    只覆盖 token，组件规则一行都不动。 */
 html[data-theme="light"] {
-  --bg: #f4f4f7;
+  --bg: #e9ebf0;
   --s0: #ffffff;
-  --s1: #fbfbfd;
-  --s2: #f6f6f9;
-  --s3: #f2f2f6;
-  --s4: #ededf2;
+  --s1: #ffffff;
+  --s2: #f8f9fb;
+  --s3: #f3f4f8;
+  --s4: #eef0f4;
   --s5: #ffffff;
-  --s6: #e9e9ef;
-  --s7: #e4e4ea;
-  --s8: #dfdfe6;
-  --s9: #d8d8e0;
-  --s10: #dbdbe2;
-  --s11: #c9c9d2;
-  --s12: #c0c0ca;
-  --s13: #b4b4bf;
+  --s6: #e8eaee;
+  --s7: #e2e4e9;
+  --s8: #dcdee4;
+  --s9: #d5d7de;
+  --s10: #d9dbe1;
+  --s11: #c7c9d1;
+  --s12: #bdc0c9;
+  --s13: #b0b3bd;
   --panel: #ffffff;
   --panel-2: #f7f7fa;
   --hover: #ececf1;

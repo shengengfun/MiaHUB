@@ -39,6 +39,9 @@ pub struct UiSettings {
     pub background: String,
     /// MIME of the custom background, so we can rebuild its data URL
     pub bg_mime: String,
+    /// Mirror of the `HKCU\...\Run` entry (see `autostart.rs`). The registry
+    /// wins: the user can delete the entry from Task Manager behind our back.
+    pub autostart: bool,
 }
 
 /// Last-known lighting selection, mirroring the wire frame's three fields.
@@ -74,6 +77,7 @@ impl Default for UiSettings {
             accent: "classic".into(),
             background: "default".into(),
             bg_mime: "image/png".into(),
+            autostart: false,
         }
     }
 }

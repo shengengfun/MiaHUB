@@ -1,5 +1,11 @@
 //! MiaHUB — open-source manager for AULA keyboards.
+//!
+//! NOTE: `frontendDist` is `../src`, so the web assets are **embedded at compile
+//! time**. Editing only `src/*` does not make `tauri dev` recompile — you get a
+//! stale UI until something under `src-tauri/` changes. Touch a .rs file when
+//! you are iterating on the frontend. (bump: 2)
 
+mod autostart;
 mod bg;
 mod bt;
 mod hid;
@@ -252,6 +258,23 @@ fn clear_background(app: AppHandle, state: State<'_, AppState>) -> Result<UiSett
     })
 }
 
+/// 开机自启（写 HKCU 的 Run 键，带 `--silent` 所以开机是隐藏到托盘）。
+#[tauri::command]
+fn set_autostart(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<UiSettings, String> {
+    autostart::set_enabled(&app, enabled)?;
+    persist(&app, &state, |s| s.autostart = enabled)
+}
+
+/// 现在是不是开机自启状态 —— 直接查注册表，免得用户在任务管理器里删了我们还显示开着。
+#[tauri::command]
+fn autostart_state() -> bool {
+    autostart::is_enabled()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -274,13 +297,35 @@ pub fn run() {
             set_theme,
             save_background,
             background_image,
-            clear_background
+            clear_background,
+            set_autostart,
+            autostart_state
         ])
         .setup(|app| {
             let handle = app.handle().clone();
             // pull the persisted prefs in before anything can consult them
             *app.state::<AppState>().settings.lock().unwrap() =
                 settings::load(&handle);
+
+            // autostart 以注册表为准：用户可能在任务管理器里直接把条目删了
+            let actually_enabled = autostart::is_enabled();
+            let app_state = app.state::<AppState>();
+            let (changed, snapshot) = {
+                let mut s = app_state.settings.lock().unwrap();
+                let changed = s.autostart != actually_enabled;
+                s.autostart = actually_enabled;
+                (changed, s.clone())
+            };
+            if changed {
+                let _ = settings::save(&handle, &snapshot);
+            }
+
+            // 配置里窗口是 visible:false，这里决定要不要真的显示出来。
+            // 开机自启带 --silent，就只留在托盘里，不弹窗。
+            let silent = std::env::args().any(|a| a == autostart::SILENT_FLAG);
+            if !silent {
+                show_main(&handle);
+            }
 
             let menu = Menu::with_items(
                 &handle,
