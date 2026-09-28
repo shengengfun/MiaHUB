@@ -117,15 +117,28 @@ pub const DEFAULT_EFFECT: u8 = 0;
 ///
 /// ```text
 ///   00 BB AA 99 88 AA <effect> <brightness> <speed> 00 00  ... zero padded
-///   └┬┘ └────┬────┘ └┬┘ └────────────┬─────────────┘
-///  reportid  magic   cmd        same bytes as the wired frame[3..7]
+///   └┬┘ └───┬───┘ └┬┘ └────────────┬─────────────┘
+/// reportid magic   cmd        same bytes as the wired frame[3..7]
 /// ```
 ///
-/// `cmd` is `0xAA` for the lighting command. Both were captured from
-/// ShinetekTools.exe and verified on real hardware.
-pub const MAGIC_24G: [u8; 5] = [0xBB, 0xAA, 0x99, 0x88, 0xAA];
+/// The magic is **4 bytes**; the `AA` that follows it at offset 5 *is* the
+/// command discriminator, not a fifth magic byte. Writing it twice shifts the
+/// whole payload one byte to the right and the firmware silently ignores the
+/// frame — which is exactly the bug that made the keyboard look stuck on its
+/// own default effect.
+///
+/// Verified against `capture_24g.log` (official ShinetekTools.exe, 2.4G mode):
+///
+/// ```text
+///   00 bb aa 99 88 aa 0a 05 02 00 …   effect 10, brightness 5, speed 2
+///   00 bb aa 99 88 aa 00 05 00 00 …   effect  0, brightness 5, speed 0
+///   00 bb aa 99 88 aa 13 05 02 00 …   effect 19, brightness 5, speed 2
+/// ```
+pub const MAGIC_24G: [u8; 4] = [0xBB, 0xAA, 0x99, 0x88];
 
 /// Command discriminator for "set lighting" inside a 2.4 GHz envelope.
+///
+/// Sits at offset 5, immediately after the 4-byte magic.
 pub const CMD_24G_LIGHTING: u8 = 0xAA;
 
 /// Length of a 2.4 GHz output report (report id + 64 bytes).
@@ -135,12 +148,12 @@ pub const REPORT_24G_LEN: usize = 65;
 pub fn envelope_24g(effect: u8, brightness: u8, speed: u8) -> [u8; REPORT_24G_LEN] {
     let mut out = [0u8; REPORT_24G_LEN];
     out[0] = 0x00; // report id
-    out[1..6].copy_from_slice(&MAGIC_24G);
-    out[6] = CMD_24G_LIGHTING;
-    // bytes 7..=9 mirror the wired frame's [4..=6]
-    out[7] = effect;
-    out[8] = brightness.min(MAX_BRIGHTNESS);
-    out[9] = speed.min(MAX_SPEED);
+    out[1..5].copy_from_slice(&MAGIC_24G); // 4-byte magic, [4] is 0x88
+    out[5] = CMD_24G_LIGHTING;
+    // bytes 6..=8 mirror the wired frame's [3..=5]
+    out[6] = effect;
+    out[7] = brightness.min(MAX_BRIGHTNESS);
+    out[8] = speed.min(MAX_SPEED);
     out
 }
 
@@ -216,20 +229,48 @@ mod tests {
 
     #[test]
     fn envelope_matches_captured_dongle_traffic() {
-        // captured in 2.4G mode: 踏雪无痕 (effect 10) at full brightness/speed
+        // All three lines are verbatim from research/capture_24g.log, captured
+        // while driving the official ShinetekTools.exe in 2.4G mode.
+        //
+        // 00 bb aa 99 88 aa 0a 05 02 00 …   踏雪无痕
+        // 00 bb aa 99 88 aa 00 05 00 00 …   常亮
+        // 00 bb aa 99 88 aa 13 05 02 00 …   正弦光波
         let f = envelope_24g(10, 5, 2);
         assert_eq!(f.len(), 65);
         assert_eq!(
-            &f[..11],
-            &[0x00, 0xBB, 0xAA, 0x99, 0x88, 0xAA, 0xAA, 0x0A, 0x05, 0x02, 0x00]
+            &f[..10],
+            &[0x00, 0xBB, 0xAA, 0x99, 0x88, 0xAA, 0x0A, 0x05, 0x02, 0x00]
         );
-        assert!(f[11..].iter().all(|b| *b == 0));
+        assert!(f[10..].iter().all(|b| *b == 0));
+
+        assert_eq!(
+            &envelope_24g(0, 5, 0)[..9],
+            &[0x00, 0xBB, 0xAA, 0x99, 0x88, 0xAA, 0x00, 0x05, 0x00]
+        );
+        assert_eq!(
+            &envelope_24g(19, 5, 2)[..9],
+            &[0x00, 0xBB, 0xAA, 0x99, 0x88, 0xAA, 0x13, 0x05, 0x02]
+        );
+    }
+
+    /// The payload must sit at [6]/[7]/[8] — an extra magic byte shifting it
+    /// right is the bug that left the keyboard stuck on its own default effect.
+    #[test]
+    fn envelope_payload_offsets_are_fixed() {
+        let f = envelope_24g(7, 3, 1);
+        assert_eq!(f[5], CMD_24G_LIGHTING, "cmd belongs at offset 5");
+        assert_eq!(f[6], 7, "effect belongs at offset 6");
+        assert_eq!(f[7], 3, "brightness belongs at offset 7");
+        assert_eq!(f[8], 1, "speed belongs at offset 8");
+        assert_eq!(MAGIC_24G.len(), 4);
+        // the magic's own last byte must not be confused with the cmd byte
+        assert_eq!(f[1..5], MAGIC_24G);
     }
 
     #[test]
     fn envelope_clamps_like_the_wired_frame() {
         let f = envelope_24g(2, 99, 99);
-        assert_eq!(f[8], MAX_BRIGHTNESS);
-        assert_eq!(f[9], MAX_SPEED);
+        assert_eq!(f[7], MAX_BRIGHTNESS);
+        assert_eq!(f[8], MAX_SPEED);
     }
 }
