@@ -1,0 +1,24 @@
+# dependencies
+node_modules/
+
+# rust / tauri build output
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# python venv (reverse-engineering work lives in the OpenALUA repo)
+.venv/
+__pycache__/
+*.pyc
+
+# editors / os
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# local scratch
+*.log
+dist/
+
+# UI reference screenshots (G HUB / vendor screenshots, kept local)
+sample/

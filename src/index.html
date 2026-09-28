@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MiaKeyDrv</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <!-- ══ 窗口按钮（浮于右上，G HUB 原生标题栏风格） ══ -->
+  <div class="winbtns">
+    <button class="winbtn" id="btn-min">–</button>
+    <button class="winbtn" id="btn-max">☐</button>
+    <button class="winbtn close" id="btn-close">✕</button>
+  </div>
+
+  <!-- ══ 1. 主页：设备列表 ══ -->
+  <section id="screen-home" class="screen active">
+    <header class="topbar" data-tauri-drag-region="deep">
+      <div class="ghub-mark" data-tauri-drag-region="deep">A</div>
+      <nav class="topnav">
+        <button class="tn active">设备</button>
+      </nav>
+      <div class="topbar-right">
+        <div class="profile-pill">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <rect x="3" y="5" width="18" height="14" rx="2" />
+            <path d="M3 10h18" />
+          </svg>
+          桌面: 默认
+          <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </div>
+        <button class="icon-btn" title="应用设置" id="home-settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7.5 19.4l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 14a2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.7-1.1l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 3a2 2 0 1 1 4 0 1.6 1.6 0 0 0 2.5 1.5l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.6 1.6 0 0 0 21 10a2 2 0 1 1 0 4 1.6 1.6 0 0 0-1.6 1z" />
+          </svg>
+        </button>
+        <div class="avatar"></div>
+      </div>
+    </header>
+
+    <div class="home-body">
+      <div class="home-tools">
+        <button class="seg active" data-layout="grid" title="网格视图">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <rect x="3" y="3" width="8" height="8" rx="2" />
+            <rect x="13" y="3" width="8" height="8" rx="2" />
+            <rect x="3" y="13" width="8" height="8" rx="2" />
+            <rect x="13" y="13" width="8" height="8" rx="2" />
+          </svg>
+        </button>
+        <button class="seg" data-layout="list" title="列表视图">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <rect x="3" y="4" width="18" height="6" rx="2" />
+            <rect x="3" y="14" width="18" height="6" rx="2" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="device-cards" id="device-cards"></div>
+      <div class="home-empty" id="home-empty">
+        <div class="he-icon">⌨</div>
+        <p>没有检测到设备</p>
+        <p class="dim">请用 USB 线连接 AULA 键盘（F3009 有线模式）</p>
+        <button class="btn" id="btn-rescan">重新扫描</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ 2. 设备详情：灯光 ══ -->
+  <section id="screen-device" class="screen">
+    <header class="devbar" data-tauri-drag-region="deep">
+      <button class="back" id="dev-back" title="返回">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M15 4l-8 8 8 8" />
+        </svg>
+      </button>
+      <h1 id="dev-name" data-tauri-drag-region="deep">—</h1>
+      <div class="topbar-right">
+        <div class="profile-pill">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <rect x="3" y="5" width="18" height="14" rx="2" />
+            <path d="M3 10h18" />
+          </svg>
+          桌面: 默认
+          <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </div>
+        <div class="avatar"></div>
+      </div>
+    </header>
+
+    <div class="device-body">
+      <!-- 最左：功能图标条 -->
+      <aside class="rail">
+        <button class="rail-btn active" title="灯光">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+            <circle cx="12" cy="12" r="3.4" />
+            <path d="M12 2.8v2.4M12 18.8v2.4M4.9 7.5l2 1.2M17.1 15.3l2 1.2M4.9 16.5l2-1.2M17.1 8.7l2-1.2" />
+          </svg>
+        </button>
+        <button class="rail-btn" title="按键（开发中）" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+            <rect x="2.6" y="6.4" width="18.8" height="11.2" rx="2.2" />
+            <path d="M6.5 10.4h.01M10 10.4h.01M13.5 10.4h.01M17 10.4h.01M8 14h8" />
+          </svg>
+        </button>
+        <div class="rail-spacer"></div>
+        <button class="rail-btn" id="go-settings" title="设备设置">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7.5 19.4l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 14a2 2 0 1 1 0-4 1.6 1.6 0 0 0 1.7-1.1l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 3a2 2 0 1 1 4 0 1.6 1.6 0 0 0 2.5 1.5l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.6 1.6 0 0 0 21 10a2 2 0 1 1 0 4 1.6 1.6 0 0 0-1.6 1z" />
+          </svg>
+        </button>
+      </aside>
+
+      <!-- 左面板：效果列表 -->
+      <aside class="side-panel">
+        <div class="sp-head">
+          <h2>灯光效果</h2>
+          <div class="sp-tools">
+            <button class="mini" title="关闭灯光" id="btn-off">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M12 4v7.5" />
+                <path d="M7.8 7.4a6.2 6.2 0 1 0 8.4 0" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="sp-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+            <circle cx="11" cy="11" r="6.5" />
+            <path d="M16 16l4 4" />
+          </svg>
+          <input id="fx-search" type="text" placeholder="搜索效果" spellcheck="false" />
+        </div>
+        <div class="sp-divider"></div>
+        <div class="sp-scroll">
+          <div class="group">
+            <button class="group-head" data-group="basic">
+              <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+              <span>预设效果</span>
+              <span class="group-count" id="fx-count"></span>
+            </button>
+            <div class="group-body" id="fx-list"></div>
+          </div>
+          <div class="fx-empty" id="fx-empty">没有匹配的效果</div>
+        </div>
+      </aside>
+
+      <!-- 右主区：当前效果参数 -->
+      <main class="work">
+        <h2 class="work-title" id="work-title">—</h2>
+        <div class="work-tools">
+          <button class="mini" title="重置为默认" id="btn-reset">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M4 12a8 8 0 1 0 2.5-5.8M4 4v5h5" />
+            </svg>
+          </button>
+        </div>
+        <div class="work-divider"></div>
+
+        <!-- 键盘预览 -->
+        <div class="kbd-stage">
+          <div class="kbd-glow" id="kbd-glow"></div>
+          <div class="board" id="board"></div>
+        </div>
+
+        <!-- 参数行（仿 DPI 行样式） -->
+        <div class="param-list">
+          <div class="param-row" id="row-brightness">
+            <span class="pr-bar" style="--c:#0a84ff"></span>
+            <span class="pr-idx">1</span>
+            <span class="pr-name">亮度</span>
+            <input id="brightness" type="range" min="0" max="5" value="5" />
+            <span class="pr-value" id="brightness-val">5</span>
+            <span class="toggle on"><i></i></span>
+          </div>
+          <div class="param-row" id="row-speed">
+            <span class="pr-bar" style="--c:#ff9f0a"></span>
+            <span class="pr-idx">2</span>
+            <span class="pr-name">速度</span>
+            <input id="speed" type="range" min="0" max="2" value="2" />
+            <span class="pr-value" id="speed-val">2</span>
+            <span class="toggle on"><i></i></span>
+          </div>
+        </div>
+      </main>
+    </div>
+  </section>
+
+  <!-- ══ 3. 设置 ══ -->
+  <section id="screen-settings" class="screen">
+    <header class="devbar" data-tauri-drag-region="deep">
+      <button class="back" id="set-back" title="返回">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M15 4l-8 8 8 8" />
+        </svg>
+      </button>
+      <h1 data-tauri-drag-region="deep"></h1>
+    </header>
+
+    <div class="settings-body">
+      <div class="set-left">
+        <div class="set-label">连接状态</div>
+        <div class="set-value" id="set-conn">未连接</div>
+        <div class="set-label" style="margin-top:26px">VID : PID</div>
+        <div class="set-value" id="set-vidpid">—</div>
+        <div class="set-label" style="margin-top:26px">序列号</div>
+        <div class="set-value" id="set-serial">—</div>
+      </div>
+
+      <div class="set-center">
+        <div class="set-devname" id="set-name">AULA</div>
+        <div class="board-static" id="board-static"></div>
+      </div>
+
+      <div class="set-right">
+        <div class="set-label">设备应答</div>
+        <div class="set-value mono" id="set-read">—</div>
+        <button class="btn-link" id="btn-read">读取设备信息</button>
+        <div class="set-label" style="margin-top:26px">协议</div>
+        <div class="set-value dim2">07 FF FF &lt;效果&gt; &lt;亮度&gt; &lt;速度&gt;</div>
+      </div>
+
+      <div class="set-bottom">
+        <div class="set-opt">
+          <div class="set-label">省电 · 空闲熄灯</div>
+          <div class="set-value dim2" style="margin-top:8px">
+            停止操作一段时间后自动关灯，按下任意键立即恢复
+          </div>
+          <div class="opt-row">
+            <input id="idle-min" type="range" min="0" max="6" step="1" value="0" />
+            <span class="set-value mono" id="idle-val">关闭</span>
+          </div>
+        </div>
+
+        <div class="set-opt">
+          <div class="set-label">省电 · 保持唤醒</div>
+          <div class="set-value dim2" style="margin-top:8px">
+            定期给键盘发一帧，避免休眠后吞掉第一个按键
+          </div>
+          <div class="opt-row">
+            <span class="toggle" id="keepawake"><i></i></span>
+            <span class="set-value dim2" id="keepawake-val">关闭</span>
+          </div>
+        </div>
+
+        <div class="set-opt">
+          <div class="set-label">性能 · 回报率实测</div>
+          <div class="set-value dim2" style="margin-top:8px">
+            点开始后<strong>按住一个键别放</strong>，5 秒后出结果
+          </div>
+          <div class="opt-row">
+            <button class="btn-link" id="btn-poll">开始实测</button>
+            <span class="set-value mono" id="poll-out">—</span>
+          </div>
+        </div>
+
+        <div class="set-opt">
+          <div class="set-label">固件未开放的项</div>
+          <div class="set-value dim2" style="margin-top:8px">
+            <strong>休眠时间 / 按键去抖</strong>：官方软件与固件命令表均无对应寄存器，
+            已确认无法通过 HID 设置。需要寄存器探测（有风险，单独工具）才能确认硬件是否支持。
+          </div>
+          <div class="opt-row">
+            <button class="btn-link" id="btn-probe">查看探测计划</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ 应用设置（独立弹层，与设备无关） ══ -->
+  <div id="app-settings" class="overlay">
+    <div class="ov-card">
+      <div class="ov-head">
+        <h2>应用设置</h2>
+        <button class="winbtn" id="ov-close">✕</button>
+      </div>
+      <div class="ov-body">
+        <div class="ov-row">
+          <div>
+            <div class="ov-title">MiaKeyDrv</div>
+            <div class="ov-sub">开源 AULA 键盘管理器 · v0.1.0</div>
+          </div>
+        </div>
+        <div class="ov-row">
+          <div>
+            <div class="ov-title">不依赖官方驱动</div>
+            <div class="ov-sub">直接通过 HID feature report 与键盘通信</div>
+          </div>
+        </div>
+        <div class="ov-row">
+          <div>
+            <div class="ov-title">协议</div>
+            <div class="ov-sub mono">07 FF FF &lt;效果&gt; &lt;亮度&gt; &lt;速度&gt;</div>
+          </div>
+        </div>
+        <div class="ov-row">
+          <div>
+            <div class="ov-title">设备设置</div>
+            <div class="ov-sub">请从设备页左下角的齿轮进入</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="keyboard-layout.js"></script>
+  <script src="main.js"></script>
+</body>
+
+</html>
