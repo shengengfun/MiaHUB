@@ -1,5 +1,6 @@
-//! MiaKeyDrv — open-source manager for AULA keyboards.
+//! MiaHUB — open-source manager for AULA keyboards.
 
+mod bg;
 mod bt;
 mod hid;
 mod protocol;
@@ -70,6 +71,7 @@ fn connect(state: State<'_, AppState>, path: String) -> Result<DeviceInfo, Strin
 
 #[tauri::command]
 fn set_lighting(
+    app: AppHandle,
     state: State<'_, AppState>,
     effect: u8,
     brightness: u8,
@@ -78,7 +80,17 @@ fn set_lighting(
     let mut guard = state.device.lock().unwrap();
     let dev = guard.as_mut().ok_or("no keyboard connected")?;
     dev.set_lighting(effect, brightness, speed)?;
+    drop(guard);
     *state.current_effect.lock().unwrap() = effect;
+    // Remember it: neither the keyboard nor the HID stack can read the current
+    // lighting back (PROTOCOL.md §4), so this app has to be the source of truth.
+    persist(&app, &state, |s| {
+        s.lighting = settings::Lighting {
+            effect,
+            brightness,
+            speed,
+        }
+    })?;
     Ok(())
 }
 
@@ -125,19 +137,119 @@ fn get_settings(state: State<'_, AppState>) -> UiSettings {
     state.settings.lock().unwrap().clone()
 }
 
+/// Mutate the settings, then write them straight back to disk.
+fn persist(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+    mutate: impl FnOnce(&mut UiSettings),
+) -> Result<UiSettings, String> {
+    let snapshot = {
+        let mut s = state.settings.lock().unwrap();
+        mutate(&mut s);
+        s.clone()
+    };
+    settings::save(app, &snapshot)?;
+    Ok(snapshot)
+}
+
 #[tauri::command]
 fn set_close_to_tray(
     app: AppHandle,
     state: State<'_, AppState>,
     enabled: bool,
 ) -> Result<UiSettings, String> {
-    let next = {
-        let mut s = state.settings.lock().unwrap();
-        s.close_to_tray = enabled;
-        s.clone()
+    persist(&app, &state, |s| s.close_to_tray = enabled)
+}
+
+#[tauri::command]
+fn set_apply_on_connect(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<UiSettings, String> {
+    persist(&app, &state, |s| s.apply_on_connect = enabled)
+}
+
+#[tauri::command]
+fn set_keep_awake(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<UiSettings, String> {
+    persist(&app, &state, |s| s.keep_awake = enabled)
+}
+
+#[tauri::command]
+fn set_idle_step(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    step: usize,
+) -> Result<UiSettings, String> {
+    persist(&app, &state, |s| s.idle_step = step)
+}
+
+/// 外观：浅色/深色、主题色、背景皮肤。三项一起写，前端只改 CSS 变量。
+#[tauri::command]
+fn set_theme(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    mode: String,
+    accent: String,
+    background: String,
+) -> Result<UiSettings, String> {
+    persist(&app, &state, |s| {
+        s.theme_mode = mode;
+        s.accent = accent;
+        s.background = background;
+    })
+}
+
+/// 存下用户上传的背景图（base64，不带 data: 前缀）。
+#[tauri::command]
+fn save_background(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    data: String,
+    mime: String,
+) -> Result<UiSettings, String> {
+    let bytes = bg::decode(&data)?;
+    if bytes.is_empty() {
+        return Err("图片是空的".into());
+    }
+    if bytes.len() > 8 * 1024 * 1024 {
+        return Err("图片太大了（上限 8MB）".into());
+    }
+    bg::save(&app, &bytes)?;
+    persist(&app, &state, |s| {
+        s.background = "custom".into();
+        s.bg_mime = mime;
+    })
+}
+
+/// 返回已保存背景图的 data URL，没存过就返回 None。
+#[tauri::command]
+fn background_image(app: AppHandle, state: State<'_, AppState>) -> Option<String> {
+    let bytes = bg::load(&app)?;
+    let mime = {
+        let s = state.settings.lock().ok()?;
+        if s.background != "custom" {
+            return None;
+        }
+        if s.bg_mime.is_empty() {
+            "image/png".to_string()
+        } else {
+            s.bg_mime.clone()
+        }
     };
-    settings::save(&app, &next)?;
-    Ok(next)
+    Some(format!("data:{mime};base64,{}", bg::encode(&bytes)))
+}
+
+#[tauri::command]
+fn clear_background(app: AppHandle, state: State<'_, AppState>) -> Result<UiSettings, String> {
+    bg::clear(&app);
+    persist(&app, &state, |s| {
+        s.background = "default".into();
+    })
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -155,7 +267,14 @@ pub fn run() {
             probe_activity,
             bt::bt_battery,
             get_settings,
-            set_close_to_tray
+            set_close_to_tray,
+            set_apply_on_connect,
+            set_keep_awake,
+            set_idle_step,
+            set_theme,
+            save_background,
+            background_image,
+            clear_background
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -173,7 +292,7 @@ pub fn run() {
             )?;
 
             let mut builder = TrayIconBuilder::with_id("main")
-                .tooltip("MiaKeyDrv — AULA 键盘管理器")
+                .tooltip("MiaHUB — AULA 键盘管理器")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id().as_ref() {
@@ -215,5 +334,5 @@ pub fn run() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running MiaKeyDrv");
+        .expect("error while running MiaHUB");
 }

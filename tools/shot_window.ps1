@@ -11,8 +11,8 @@ public class Cap {
 }
 "@
 
-$p = Get-Process miakeydrv -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
-if (-not $p) { Write-Output "no miakeydrv window"; exit 1 }
+$p = Get-Process miahub -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+if (-not $p) { Write-Output "no miahub window"; exit 1 }
 
 $h = $p.MainWindowHandle
 [void][Cap]::ShowWindow($h, 9)

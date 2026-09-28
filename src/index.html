@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MiaKeyDrv</title>
+  <title>MiaHUB</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 
@@ -299,44 +299,121 @@
     </div>
   </section>
 
-  <!-- ══ 应用设置（独立弹层，与设备无关） ══ -->
+  <!-- ══ 应用设置（左分类 + 右内容） ══ -->
   <div id="app-settings" class="overlay">
-    <div class="ov-card">
+    <div class="ov-card ov-wide">
       <div class="ov-head">
         <h2>应用设置</h2>
         <button class="winbtn" id="ov-close">✕</button>
       </div>
-      <div class="ov-body">
-        <div class="ov-row">
-          <div>
-            <div class="ov-title">MiaKeyDrv</div>
-            <div class="ov-sub">开源 AULA 键盘管理器 · v0.1.0</div>
-          </div>
-        </div>
-        <div class="ov-row">
-          <div>
-            <div class="ov-title">不依赖官方驱动</div>
-            <div class="ov-sub">直接通过 HID feature report 与键盘通信</div>
-          </div>
-        </div>
-        <div class="ov-row">
-          <div>
-            <div class="ov-title">协议</div>
-            <div class="ov-sub mono">07 FF FF &lt;效果&gt; &lt;亮度&gt; &lt;速度&gt;</div>
-          </div>
-        </div>
-        <div class="ov-row">
-          <div>
-            <div class="ov-title">关闭窗口时最小化到托盘</div>
-            <div class="ov-sub">开启：点 ✕ 只隐藏窗口，程序继续留在托盘工作（保持唤醒等待机功能不会断）；<br>关闭：点 ✕ 直接退出程序</div>
-          </div>
-          <span class="toggle on" id="ov-tray"><i></i></span>
-        </div>
-        <div class="ov-row">
-          <div>
-            <div class="ov-title">设备设置</div>
-            <div class="ov-sub">请从设备页左下角的齿轮进入</div>
-          </div>
+
+      <div class="ov-split">
+        <nav class="ov-nav">
+          <button class="ov-nav-item active" data-pane="appearance">外观</button>
+          <button class="ov-nav-item" data-pane="general">通用</button>
+          <button class="ov-nav-item" data-pane="about">关于</button>
+        </nav>
+
+        <div class="ov-panes">
+          <!-- ── 外观 ── -->
+          <section class="ov-pane active" data-pane="appearance">
+            <div class="sec">
+              <div class="sec-title">主题模式</div>
+              <div class="mode-row">
+                <button class="mode-card" data-mode="light">
+                  <span class="mode-swatch light"></span>
+                  <span class="mode-name">浅色</span>
+                  <span class="pick-tick">已应用</span>
+                </button>
+                <button class="mode-card" data-mode="dark">
+                  <span class="mode-swatch dark"></span>
+                  <span class="mode-name">深色</span>
+                  <span class="pick-tick">已应用</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="sec">
+              <div class="sec-title">
+                主题色
+                <span class="sec-hint">比官方多几组；改的是高亮色与光晕</span>
+              </div>
+              <div class="accent-grid" id="accent-grid"></div>
+            </div>
+
+            <div class="sec">
+              <div class="sec-title">
+                背景皮肤
+                <span class="sec-hint">自定义图片存在本机，不留副本</span>
+              </div>
+              <div class="bg-grid" id="bg-grid"></div>
+              <div class="bg-actions">
+                <button class="btn" id="bg-upload">选择图片…</button>
+                <button class="btn subtle" id="bg-clear">移除自定义</button>
+                <span class="ov-sub" id="bg-hint">PNG / JPG，建议 4MB 以内</span>
+                <input type="file" id="bg-file" accept="image/*" hidden />
+              </div>
+            </div>
+          </section>
+
+          <!-- ── 通用 ── -->
+          <section class="ov-pane" data-pane="general">
+            <div class="ov-row">
+              <div>
+                <div class="ov-title">关闭窗口时最小化到托盘</div>
+                <div class="ov-sub">开启：点 ✕ 只隐藏窗口，程序继续留在托盘工作（保持唤醒等后台功能不会断）；<br>关闭：点 ✕ 直接退出程序</div>
+              </div>
+              <span class="toggle on" id="ov-tray"><i></i></span>
+            </div>
+            <div class="ov-row">
+              <div>
+                <div class="ov-title">连接键盘时自动应用灯效</div>
+                <div class="ov-sub">开启：连上键盘就把记住的灯效重发一遍（官方驱动就是这个行为）；<br>关闭：连上后<b>不碰</b>你键盘当前的灯效，只在你手动改的时候才下发</div>
+              </div>
+              <span class="toggle" id="ov-apply-connect"><i></i></span>
+            </div>
+            <div class="ov-row static">
+              <div>
+                <div class="ov-title">设备设置</div>
+                <div class="ov-sub">空闲熄灯 / 保持唤醒 / 回报率实测 —— 请从设备页左下角的齿轮进入</div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ── 关于 ── -->
+          <section class="ov-pane" data-pane="about">
+            <div class="about-hero">
+              <div class="about-mark">A</div>
+              <div>
+                <div class="about-name">MiaHUB</div>
+                <div class="ov-sub">开源 AULA 键盘管理器 · v0.1.0</div>
+              </div>
+            </div>
+            <div class="ov-row static">
+              <div>
+                <div class="ov-title">不依赖官方驱动</div>
+                <div class="ov-sub">直接通过 HID feature report / output report 与键盘通信，不装驱动、不常驻服务</div>
+              </div>
+            </div>
+            <div class="ov-row static">
+              <div>
+                <div class="ov-title">有线协议</div>
+                <div class="ov-sub mono">07 FF FF &lt;效果&gt; &lt;亮度&gt; &lt;速度&gt;</div>
+              </div>
+            </div>
+            <div class="ov-row static">
+              <div>
+                <div class="ov-title">2.4G 协议</div>
+                <div class="ov-sub mono">00 BB AA 99 88 AA &lt;效果&gt; &lt;亮度&gt; &lt;速度&gt;</div>
+              </div>
+            </div>
+            <div class="ov-row static">
+              <div>
+                <div class="ov-title">许可</div>
+                <div class="ov-sub">MIT · 与东莞市索艾电子科技有限公司无关联</div>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 //! Persisted application preferences.
 //!
 //! Deliberately tiny: one JSON object under the app config dir
-//! (`%APPDATA%\com.shengengfun.miakeydrv\settings.json`).
+//! (`%APPDATA%\com.shengengfun.miahub\settings.json`).
 //! Everything here is a *UI* preference — nothing that touches the keyboard.
 
 use std::path::PathBuf;
@@ -15,6 +15,49 @@ pub struct UiSettings {
     /// Closing the main window hides it to the tray instead of quitting.
     /// Turn this off and the ✕ button really exits.
     pub close_to_tray: bool,
+    /// Re-send the remembered lighting as soon as a keyboard connects.
+    ///
+    /// **Off by default on purpose.** The keyboard does not report its current
+    /// lighting back (see PROTOCOL.md §4), so the app cannot know what the user
+    /// has it set to. Pushing blindly means "open the app → your effect is
+    /// replaced by whatever we happen to remember". The official tool has
+    /// exactly this wart (`07 FF FF 00 05 00 00 00` on open). Turning this on
+    /// restores the official behaviour for people who want it.
+    pub apply_on_connect: bool,
+    /// The lighting the user last picked. Persisted because neither the
+    /// keyboard nor the Windows HID stack can tell us what is actually set.
+    pub lighting: Lighting,
+    /// Keep-awake ping enabled (see the frontend's keep-awake loop).
+    pub keep_awake: bool,
+    /// Index into the frontend's IDLE_STEPS table.
+    pub idle_step: usize,
+    /// "dark" | "light"
+    pub theme_mode: String,
+    /// id of the accent preset (see the frontend's ACCENTS table)
+    pub accent: String,
+    /// "default" | a built-in preset id | "custom"
+    pub background: String,
+    /// MIME of the custom background, so we can rebuild its data URL
+    pub bg_mime: String,
+}
+
+/// Last-known lighting selection, mirroring the wire frame's three fields.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Lighting {
+    pub effect: u8,
+    pub brightness: u8,
+    pub speed: u8,
+}
+
+impl Default for Lighting {
+    fn default() -> Self {
+        Self {
+            effect: crate::protocol::DEFAULT_EFFECT,
+            brightness: crate::protocol::MAX_BRIGHTNESS,
+            speed: crate::protocol::MAX_SPEED,
+        }
+    }
 }
 
 impl Default for UiSettings {
@@ -23,6 +66,14 @@ impl Default for UiSettings {
             // matches the behaviour of every other peripheral utility:
             // ✕ keeps the app alive so lighting/keep-awake keep working
             close_to_tray: true,
+            apply_on_connect: false,
+            lighting: Lighting::default(),
+            keep_awake: false,
+            idle_step: 0,
+            theme_mode: "dark".into(),
+            accent: "classic".into(),
+            background: "default".into(),
+            bg_mime: "image/png".into(),
         }
     }
 }

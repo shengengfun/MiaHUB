@@ -1,4 +1,4 @@
-/* ── MiaKeyDrv frontend — G HUB style three-screen flow ────────────── */
+/* ── MiaHUB frontend — G HUB style three-screen flow ────────────── */
 
 const { invoke } = window.__TAURI__.core;
 
@@ -256,6 +256,41 @@ function setUnconnected() {
   $("#set-conn").textContent = "未连接";
 }
 
+/* ── 应用级设置（落盘在 settings.json） ─────────────────────────────────
+   键盘不回读配置（PROTOCOL.md §4）—— 官方软件也是自己拿 ledeffect.xml 记状态。
+   所以“当前灯效”只能由应用侧记住，这里就是那份记住的账。 */
+let appSettings = {
+  close_to_tray: true,
+  apply_on_connect: false,
+  lighting: null,
+  keep_awake: false,
+  idle_step: 0,
+  theme_mode: "dark",
+  accent: "classic",
+  background: "default",
+};
+
+async function loadSettings() {
+  try {
+    appSettings = await invoke("get_settings");
+  } catch { /* 读不到就用默认值 */ }
+}
+
+/* 把记住的灯效铺回界面 —— 只改 UI，**不发帧**。
+   这样打开 App 不会把你键盘当前的灯效盖掉（以前就是这么回退成常亮的）。 */
+function restoreLighting() {
+  const l = appSettings.lighting;
+  if (l) {
+    if (typeof l.effect === "number") effect = l.effect;
+    if (typeof l.brightness === "number") brightness = l.brightness;
+    if (typeof l.speed === "number") speed = l.speed;
+  }
+  $("#brightness").value = brightness;
+  $("#brightness-val").textContent = String(brightness);
+  $("#speed").value = speed;
+  $("#speed-val").textContent = String(speed);
+}
+
 /* ── connect + push ─────────────────────────────────────────────────── */
 
 async function connect(d) {
@@ -271,9 +306,13 @@ async function connect(d) {
       `${info.pid.toString(16).toUpperCase().padStart(4, "0")}`;
     $("#set-serial").textContent = info.serial || "—";
 
+    restoreLighting();
     renderEffects();
     applyPreview();
-    await push();
+    // 默认**不下发**。键盘不回读配置，我们手上这个状态只是“上次你选的”，
+    // 不一定等于键盘现在的；无条件 push 就会把当前灯效盖成记忆值。
+    // 想要“打开就恢复我的灯效”就在应用设置里打开那个开关。
+    if (appSettings.apply_on_connect) await push();
   } catch (e) {
     toast(String(e), true);
   }
@@ -379,18 +418,32 @@ const idleLabel = (m) => (m === 0 ? "关闭" : `${m} 分钟`);
 function initPowerControls() {
   const slider = $("#idle-min");
   const out = $("#idle-val");
+  // 恢复上次的位置（IDLE_STEPS 的下标）
+  const step = Math.min(Math.max(appSettings.idle_step | 0, 0), IDLE_STEPS.length - 1);
+  slider.value = String(step);
+  idleMinutes = IDLE_STEPS[step];
+  slider.addEventListener("change", () => {
+    const i = Number(slider.value);
+    invoke("set_idle_step", { step: i }).then((s) => (appSettings = s)).catch(() => {});
+  });
   slider.addEventListener("input", () => {
     idleMinutes = IDLE_STEPS[Number(slider.value)] ?? 0;
     lastActivity = Date.now();
     out.textContent = idleLabel(idleMinutes);
   });
-  out.textContent = idleLabel(IDLE_STEPS[Number(slider.value)] ?? 0);
+  out.textContent = idleLabel(idleMinutes);
 
   const ka = $("#keepawake");
+  keepAwake = !!appSettings.keep_awake;
+  ka.classList.toggle("on", keepAwake);
+  $("#keepawake-val").textContent = keepAwake ? "已开启" : "关闭";
   ka.onclick = () => {
     keepAwake = !keepAwake;
     ka.classList.toggle("on", keepAwake);
     $("#keepawake-val").textContent = keepAwake ? "已开启" : "关闭";
+    invoke("set_keep_awake", { enabled: keepAwake })
+      .then((s) => (appSettings = s))
+      .catch(() => {});
     toast(keepAwake ? "已开启保持唤醒，每 60 秒续一次" : "已关闭保持唤醒");
   };
 
@@ -453,27 +506,246 @@ function initPowerControls() {
     toast("探测需要单独跑 tools/probe_registers.py（会逐个试未知寄存器，有风险）");
 }
 
-/* ── 应用设置（持久化到 settings.json，与键盘无关） ───────────────── */
+/* ── 外观：主题色 / 浅色模式 / 背景皮肤 ───────────────────────────────
+   全部只改 CSS 变量，组件规则一行不动。预设都是自己定的，没照抄官方那几组。 */
 
-async function initUiSettings() {
-  const el = $("#ov-tray");
-  if (!el) return;
-  let s = { close_to_tray: true };
+/* surface 决定"界面底色"的观感（双色卡上半块 + 背景微光），accent 是高亮色 */
+const ACCENTS = [
+  { id: "classic", zh: "经典蓝", surface: "#1c2026", accent: "#0a84ff" },
+  { id: "graphite", zh: "墨岩", surface: "#2b2b30", accent: "#e8402f" },
+  { id: "provence", zh: "普罗旺斯", surface: "#7b8fd4", accent: "#f2a0b5" },
+  { id: "indigo", zh: "黛蓝", surface: "#2f4d6b", accent: "#00a9a5" },
+  { id: "amber", zh: "丹霞", surface: "#d0562d", accent: "#1b7fa8" },
+  { id: "forest", zh: "松林", surface: "#2f5d3a", accent: "#8fd14f" },
+];
+
+/* 内置背景全是 CSS 渐变：不往仓库里塞几 MB 图片，也没有素材版权问题。
+   想要真照片就自己上传。 */
+const BACKGROUNDS = [
+  { id: "default", zh: "默认", css: "none" },
+  {
+    id: "aurora", zh: "极光",
+    css: "radial-gradient(1200px 720px at 18% -6%, rgba(88,120,255,.30), transparent 62%)," +
+      "radial-gradient(900px 620px at 92% 104%, rgba(0,200,190,.24), transparent 58%)",
+  },
+  {
+    id: "ember", zh: "余烬",
+    css: "radial-gradient(1000px 640px at 84% -10%, rgba(255,120,60,.26), transparent 60%)," +
+      "radial-gradient(820px 560px at 6% 106%, rgba(200,40,60,.22), transparent 58%)",
+  },
+  {
+    id: "mist", zh: "雾霭",
+    css: "linear-gradient(155deg, rgba(120,130,160,.20) 0%, rgba(20,22,30,0) 46%)," +
+      "radial-gradient(760px 520px at 50% 118%, rgba(160,170,200,.18), transparent 62%)",
+  },
+  {
+    id: "grid", zh: "网格",
+    css: "repeating-linear-gradient(0deg, rgba(140,150,180,.09) 0 1px, transparent 1px 34px)," +
+      "repeating-linear-gradient(90deg, rgba(140,150,180,.09) 0 1px, transparent 1px 34px)",
+  },
+  {
+    id: "vignette", zh: "暗角",
+    css: "radial-gradient(120% 92% at 50% 44%, rgba(0,0,0,0) 38%, rgba(0,0,0,.62) 100%)",
+  },
+];
+
+let customBg = null; // 上传的背景图 data URL
+
+function hexToRgb(hex) {
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const n = parseInt(full, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function mix(hex, towardWhite, amount) {
+  const [r, g, b] = hexToRgb(hex);
+  const t = towardWhite ? 255 : 0;
+  const m = (x) => Math.round(x + (t - x) * amount);
+  return `rgb(${m(r)}, ${m(g)}, ${m(b)})`;
+}
+
+function currentAccent() {
+  return ACCENTS.find((a) => a.id === appSettings.accent) || ACCENTS[0];
+}
+
+function applyTheme() {
+  const light = appSettings.theme_mode === "light";
+  document.documentElement.dataset.theme = light ? "light" : "dark";
+
+  const a = currentAccent();
+  const [r, g, b] = hexToRgb(a.accent);
+  const [sr, sg, sb] = hexToRgb(a.surface);
+  const root = document.documentElement.style;
+
+  root.setProperty("--accent", a.accent);
+  root.setProperty("--accent-rgb", `${r}, ${g}, ${b}`);
+  root.setProperty("--accent-soft", `rgba(${r}, ${g}, ${b}, ${light ? 0.13 : 0.16})`);
+  root.setProperty("--accent-ink", mix(a.accent, !light, light ? 0.42 : 0.72));
+  root.setProperty("--tint", a.surface);
+  root.setProperty(
+    "--wash-image",
+    `radial-gradient(1100px 640px at 78% -12%, rgba(${sr}, ${sg}, ${sb}, ${light ? 0.14 : 0.22}), transparent 72%)`
+  );
+
+  const preset = BACKGROUNDS.find((x) => x.id === appSettings.background) || BACKGROUNDS[0];
+  const image = customBg ? `url("${customBg}")` : preset.css;
+  const veil = customBg
+    ? `linear-gradient(rgba(${light ? "255,255,255,.74" : "0,0,0,.58"}), rgba(${light ? "255,255,255,.74" : "0,0,0,.58"}))`
+    : "none";
+  root.setProperty("--bg-image", image);
+  // 有照片时必须压一层薄纱，否则前景文字对比度不够
+  root.setProperty("--bg-veil-image", veil);
+}
+
+function markPicked(sel, attr, value) {
+  $$(sel).forEach((el) => el.classList.toggle("is-picked", el.dataset[attr] === value));
+}
+
+function renderAppearance() {
+  const acc = $("#accent-grid");
+  acc.innerHTML = "";
+  for (const a of ACCENTS) {
+    const b = document.createElement("button");
+    b.className = "accent-card";
+    b.dataset.accent = a.id;
+    b.innerHTML =
+      `<span class="accent-half top" style="background:${a.surface}"></span>` +
+      `<span class="accent-half bottom" style="background:${a.accent}"></span>` +
+      `<span class="accent-name">${a.zh}</span>` +
+      `<span class="pick-tick">已应用</span>`;
+    b.onclick = () => saveTheme({ accent: a.id });
+    acc.appendChild(b);
+  }
+
+  const bg = $("#bg-grid");
+  bg.innerHTML = "";
+  const tiles = BACKGROUNDS.slice();
+  if (customBg) tiles.push({ id: "custom", zh: "自定义", css: `url("${customBg}")` });
+  for (const t of tiles) {
+    const b = document.createElement("button");
+    b.className = "bg-tile";
+    b.dataset.bg = t.id;
+    b.style.backgroundImage = t.css;
+    b.innerHTML = `<span class="bg-name">${t.zh}</span><span class="pick-tick">已应用</span>`;
+    b.onclick = () => {
+      if (t.id === "custom" && !customBg) return;
+      saveTheme({ background: t.id });
+    };
+    bg.appendChild(b);
+  }
+
+  markPicked(".accent-card", "accent", currentAccent().id);
+  markPicked(".bg-tile", "bg", appSettings.background);
+  markPicked(".mode-card", "mode", appSettings.theme_mode);
+
+  const has = !!customBg;
+  $("#bg-clear").disabled = !has;
+  $("#bg-clear").style.opacity = has ? "1" : ".45";
+}
+
+async function saveTheme(patch) {
+  const next = {
+    mode: patch.mode ?? appSettings.theme_mode,
+    accent: patch.accent ?? appSettings.accent,
+    background: patch.background ?? appSettings.background,
+  };
   try {
-    s = await invoke("get_settings");
-  } catch { /* 读不到就用默认值 */ }
-  el.classList.toggle("on", !!s.close_to_tray);
-  el.onclick = async () => {
-    const next = !el.classList.contains("on");
-    el.classList.toggle("on", next);
+    appSettings = await invoke("set_theme", next);
+    applyTheme();
+    renderAppearance();
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+async function initAppearance() {
+  applyTheme();
+  renderAppearance();
+
+  // 左分类切换
+  $$(".ov-nav-item").forEach((btn) => {
+    btn.onclick = () => {
+      $$(".ov-nav-item").forEach((b) => b.classList.toggle("active", b === btn));
+      $$(".ov-pane").forEach((p) =>
+        p.classList.toggle("active", p.dataset.pane === btn.dataset.pane)
+      );
+    };
+  });
+
+  $$(".mode-card").forEach((c) => {
+    c.onclick = () => saveTheme({ mode: c.dataset.mode });
+  });
+
+  $("#bg-upload").onclick = () => $("#bg-file").click();
+  $("#bg-file").onchange = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!/^image\//.test(file.type)) return toast("请选一张图片", true);
+    if (file.size > 8 * 1024 * 1024) return toast("图片太大，建议 4MB 以内", true);
     try {
-      await invoke("set_close_to_tray", { enabled: next });
-      toast(next ? "点 ✕ 将最小化到托盘" : "点 ✕ 将直接退出程序");
+      const data = await fileToBase64(file);
+      appSettings = await invoke("save_background", { data, mime: file.type });
+      customBg = `data:${file.type};base64,${data}`;
+      applyTheme();
+      renderAppearance();
+      toast("背景已应用");
+    } catch (err) {
+      toast(String(err), true);
+    }
+  };
+
+  $("#bg-clear").onclick = async () => {
+    try {
+      appSettings = await invoke("clear_background");
+      customBg = null;
+      appSettings.background = "default";
+      applyTheme();
+      renderAppearance();
+      toast("已移除自定义背景");
     } catch (e) {
-      el.classList.toggle("on", !next);
       toast(String(e), true);
     }
   };
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onerror = () => reject("读取文件失败");
+    fr.onload = () => {
+      const s = String(fr.result);
+      resolve(s.slice(s.indexOf(",") + 1)); // 去掉 data:...;base64, 前缀
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
+/* ── 应用设置（持久化到 settings.json，与键盘无关） ───────────────── */
+
+function initUiSettings() {
+  const bind = (sel, key, cmd, onMsg, offMsg) => {
+    const el = $(sel);
+    if (!el) return;
+    el.classList.toggle("on", !!appSettings[key]);
+    el.onclick = async () => {
+      const next = !el.classList.contains("on");
+      el.classList.toggle("on", next);
+      try {
+        appSettings = await invoke(cmd, { enabled: next });
+        toast(next ? onMsg : offMsg);
+      } catch (e) {
+        el.classList.toggle("on", !next);
+        toast(String(e), true);
+      }
+    };
+  };
+
+  bind("#ov-tray", "close_to_tray", "set_close_to_tray",
+    "点 ✕ 将最小化到托盘", "点 ✕ 将直接退出程序");
+  bind("#ov-apply-connect", "apply_on_connect", "set_apply_on_connect",
+    "连接键盘时会自动下发记住的灯效", "连接键盘时不再改动灯效");
 }
 
 /* ── boot ───────────────────────────────────────────────────────────── */
@@ -509,11 +781,17 @@ window.addEventListener("DOMContentLoaded", async () => {
   // settings preview
   $("#board-static").appendChild(makeBoard(3, 1));
 
+  await loadSettings();
+  // 自定义背景图存在本机配置文件旁边，启动时取回来（只读一次，不塞进设置 JSON）
+  try {
+    customBg = await invoke("background_image");
+  } catch { /* 没上传过 */ }
   effects = await invoke("list_effects");
   renderEffects();
   initSliders();
   initPowerControls();
   initUiSettings();
+  initAppearance();
   applyPreview();
   fitMainBoard();
   window.addEventListener("resize", () => {

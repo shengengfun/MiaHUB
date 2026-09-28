@@ -1,13 +1,13 @@
 [package]
-name = "miakeydrv"
+name = "miahub"
 version = "0.1.0"
 edition = "2021"
-description = "MiaKeyDrv — open-source AULA keyboard manager (F3009 / F2087Pro)"
+description = "MiaHUB — open-source AULA keyboard manager (F3009 / F2087Pro)"
 authors = ["shengengfun"]
 license = "MIT"
 
 [lib]
-name = "miakeydrv_lib"
+name = "miahub_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

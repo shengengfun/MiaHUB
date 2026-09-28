@@ -67,7 +67,7 @@ pub struct Effect {
     /// whether the effect honours the speed byte
     pub has_speed: bool,
     /// the official UI hides this row for the F3009, but the firmware
-    /// accepts the value — exposed by MiaKeyDrv as a bonus
+    /// accepts the value — exposed by MiaHUB as a bonus
     pub hidden: bool,
 }
 
@@ -221,7 +221,7 @@ mod tests {
             assert_eq!(e.index as usize, i, "effects must be 0-based and contiguous");
         }
         // 常亮 sits at 0 — the row-1 / data-0 quirk that used to make
-        // MiaKeyDrv light only the gaming keys
+        // MiaHUB light only the gaming keys
         assert_eq!(EFFECTS[0].index, DEFAULT_EFFECT);
         assert_eq!(EFFECTS[0].en, "Steady");
         assert!(EFFECTS[1].hidden);

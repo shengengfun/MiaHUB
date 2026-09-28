@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "MiaKeyDrv",
+  "productName": "MiaHUB",
   "version": "0.1.0",
-  "identifier": "com.shengengfun.miakeydrv",
+  "identifier": "com.shengengfun.miahub",
   "build": {
     "frontendDist": "../src"
   },
@@ -10,7 +10,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "MiaKeyDrv — AULA 键盘管理器",
+        "title": "MiaHUB — AULA 键盘管理器",
         "width": 1180,
         "height": 780,
         "minWidth": 960,
