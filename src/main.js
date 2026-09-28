@@ -453,6 +453,29 @@ function initPowerControls() {
     toast("探测需要单独跑 tools/probe_registers.py（会逐个试未知寄存器，有风险）");
 }
 
+/* ── 应用设置（持久化到 settings.json，与键盘无关） ───────────────── */
+
+async function initUiSettings() {
+  const el = $("#ov-tray");
+  if (!el) return;
+  let s = { close_to_tray: true };
+  try {
+    s = await invoke("get_settings");
+  } catch { /* 读不到就用默认值 */ }
+  el.classList.toggle("on", !!s.close_to_tray);
+  el.onclick = async () => {
+    const next = !el.classList.contains("on");
+    el.classList.toggle("on", next);
+    try {
+      await invoke("set_close_to_tray", { enabled: next });
+      toast(next ? "点 ✕ 将最小化到托盘" : "点 ✕ 将直接退出程序");
+    } catch (e) {
+      el.classList.toggle("on", !next);
+      toast(String(e), true);
+    }
+  };
+}
+
 /* ── boot ───────────────────────────────────────────────────────────── */
 
 function initSliders() {
@@ -490,6 +513,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   renderEffects();
   initSliders();
   initPowerControls();
+  initUiSettings();
   applyPreview();
   fitMainBoard();
   window.addEventListener("resize", () => {
