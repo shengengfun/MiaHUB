@@ -17,6 +17,8 @@ pub struct DeviceInfo {
     pub connection: String,
     /// whether we can actually talk to it
     pub supported: bool,
+    /// whether this vid/pid is a model we have confirmed on real hardware
+    pub verified: bool,
     pub serial: String,
     /// opaque path used to open the device
     pub path: String,
@@ -43,14 +45,14 @@ fn pretty_name(vid: u16, pid: u16) -> (String, String, bool) {
             ("AULA F3009".into(), "wired".into(), true)
         }
         (protocol::VENDOR_ID, p) if p == protocol::F3009_DONGLE_PID => {
-            ("AULA F3009".into(), "dongle".into(), false)
+            ("AULA F3009".into(), "dongle".into(), true)
         }
         (protocol::VENDOR_ID, p) => (format!("AULA device {p:04X}"), "unknown".into(), false),
         (v, p) if (v, p) == protocol::F2087PRO_USB => {
-            ("AULA F2087Pro".into(), "wired".into(), false)
+            ("AULA F2087Pro".into(), "wired".into(), true)
         }
         (v, p) if (v, p) == protocol::F2087PRO_DONGLE => {
-            ("AULA F2087Pro".into(), "dongle".into(), false)
+            ("AULA F2087Pro".into(), "dongle".into(), true)
         }
         (v, p) => (format!("Unknown device {v:04X}:{p:04X}"), "unknown".into(), false),
     }
@@ -75,13 +77,12 @@ pub fn list_devices(api: &HidApi) -> Vec<DeviceInfo> {
 
     let mut out: Vec<DeviceInfo> = Vec::new();
     for info in api.device_list() {
-        let (name, connection, mut supported) = pretty_name(info.vendor_id(), info.product_id());
-        // only the vendor control collection can be used for configuration
-        let is_ctrl = info.usage_page() == protocol::CTRL_USAGE_PAGE
+        let (name, connection, verified) = pretty_name(info.vendor_id(), info.product_id());
+        // 只要拿到了厂商控制集合（0xFF01:0x0001）就能控。
+        // 2.4G 接收器到底提不提供这个集合，要插上才知道，
+        // 所以不再按 PID 名单一刀切，而是看集合本身。
+        let supported = info.usage_page() == protocol::CTRL_USAGE_PAGE
             && info.usage() == protocol::CTRL_USAGE;
-        if !is_ctrl {
-            supported = false;
-        }
 
         // skip duplicate entries for the same product/mode, keeping the control
         // collection when we have it
@@ -90,11 +91,11 @@ pub fn list_devices(api: &HidApi) -> Vec<DeviceInfo> {
             .find(|d| d.vid == info.vendor_id() && d.pid == info.product_id() && d.connection == connection)
         {
             if supported && !existing.supported {
-                *existing = build_info(&name, info, connection, supported, &inputs);
+                *existing = build_info(&name, info, connection, supported, verified, &inputs);
             }
             continue;
         }
-        out.push(build_info(&name, info, connection, supported, &inputs));
+        out.push(build_info(&name, info, connection, supported, verified, &inputs));
     }
     out
 }
@@ -104,6 +105,7 @@ fn build_info(
     info: &hidapi::DeviceInfo,
     connection: String,
     supported: bool,
+    verified: bool,
     inputs: &[(u16, u16, String)],
 ) -> DeviceInfo {
     let input_path = inputs
@@ -117,6 +119,7 @@ fn build_info(
         pid: info.product_id(),
         connection,
         supported,
+        verified,
         serial: info.serial_number().unwrap_or("").to_string(),
         path: info.path().to_string_lossy().to_string(),
         input_path,

@@ -80,7 +80,7 @@ effects! {
     (0,  "常亮",       "Steady",                    false, false),
     (1,  "指点江山",   "Gaming Special Key",        false, true),
     (2,  "呼吸",       "Breathing",                 true,  false),
-    (3,  "随按随灭",   "Press and destroy",         false, false),
+    (3,  "随按随灭",   "Press and destroy",         true,  false),
     (4,  "随波逐流",   "Neon stream",               true,  false),
     (5,  "流光模式",   "Streamer",                  true,  false),
     (6,  "流光溢彩",   "Flowing light and color",   true,  false),

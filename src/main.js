@@ -12,11 +12,14 @@ let fxFilter = "";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
 
-/* which animation class + colour previews each effect */
+/* which animation class + colour previews each effect.
+   官方只对部分灯效显示速度滑块，这里每条灯效都有动画 */
 const FX_CLASS = {
-  0: "fx-lit", 1: "fx-gaming", 2: "fx-breathe", 4: "fx-cycle", 5: "fx-cycle",
-  6: "fx-cycle", 10: "fx-cycle", 13: "fx-sweep", 14: "fx-cycle",
-  15: "fx-sweep", 17: "fx-sweep", 18: "fx-cycle", 19: "fx-cycle",
+  0: "fx-lit", 1: "fx-gaming", 2: "fx-breathe", 3: "fx-breathe",
+  4: "fx-cycle", 5: "fx-cycle", 6: "fx-cycle", 7: "fx-sweep",
+  8: "fx-breathe", 9: "fx-sweep", 10: "fx-cycle", 11: "fx-sweep",
+  12: "fx-cycle", 13: "fx-sweep", 14: "fx-cycle", 15: "fx-sweep",
+  16: "fx-breathe", 17: "fx-sweep", 18: "fx-cycle", 19: "fx-cycle",
 };
 const FX_COLOR = {
   0: "#0a84ff", 1: "#ff3b30", 2: "#4d7cff", 3: "#ff9f0a", 4: "#00ffc8",
@@ -110,6 +113,11 @@ function applyPreview() {
   const cls = FX_CLASS[effect];
 
   document.documentElement.style.setProperty("--fx", color);
+  // 速度 0/1/2 → 动画周期，让预览真的跟着速度变（官方速度量程就是 0..2）
+  document.documentElement.style.setProperty(
+    "--fx-dur",
+    `${[3.4, 1.9, 1.0][speed] ?? 1.9}s`
+  );
 
   for (const board of boxes) {
     board.className = "board";
@@ -152,7 +160,9 @@ async function refreshDevices(auto = false) {
     card.innerHTML = `
       <div class="dcard-name">${d.name.replace(/^AULA\s*/, "")}</div>
       <div class="dcard-meta">
-        <span class="dcard-chip">${modeLabel(d.connection)}</span>
+        <span class="dcard-chip">${modeLabel(d.connection)}${
+          d.verified ? "" : " · 未验证"
+        }</span>
         <span class="dcard-batt">
           <svg viewBox="0 0 26 14" fill="none" stroke="currentColor" stroke-width="1.3">
             <rect x="1" y="2" width="20" height="10" rx="2.5"/>
@@ -250,16 +260,20 @@ function renderEffects() {
   const cur = effects.find((f) => f.index === effect);
   $("#work-title").textContent = cur ? `${cur.zh}（${cur.en}）` : "—";
 
+  // 速度对每条灯效都可调。官方是按灯效分页决定要不要显示滑块，
+  // 这里不限制（不能比原版选项少），只对静态灯效加一句提示。
   const rowSpeed = $("#row-speed");
-  const hasSpeed = !!cur?.has_speed;
-  rowSpeed.classList.toggle("disabled", !hasSpeed);
-  $("#speed").disabled = !hasSpeed;
-  rowSpeed.querySelector(".toggle").classList.toggle("on", hasSpeed);
+  rowSpeed.classList.toggle("hint", cur ? !cur.has_speed : false);
+  $("#speed").disabled = false;
+  rowSpeed.querySelector(".toggle").classList.add("on");
 }
 
 async function push() {
   if (!device) return;
-  const spd = effects.find((f) => f.index === effect)?.has_speed ? speed : 0;
+  // 任何手动的设置动作都算「有操作」，取消空闲熄灯
+  lastActivity = Date.now();
+  idleDimmed = false;
+  const spd = speed;
   try {
     await invoke("set_lighting", { effect, brightness, speed: spd });
   } catch (e) {
@@ -322,9 +336,12 @@ function initPowerControls() {
     }
   }, 2500);
 
-  // keep-awake: re-assert the current lighting so the MCU never idles out
+  // keep-awake: re-assert the current lighting so the MCU never idles out.
+  // NOTE: deliberately not push(), which would reset the idle timer.
   setInterval(() => {
-    if (keepAwake && device && !idleDimmed) push();
+    if (!keepAwake || !device || idleDimmed) return;
+    const spd = effects.find((f) => f.index === effect)?.has_speed ? speed : 0;
+    invoke("set_lighting", { effect, brightness, speed: spd }).catch(() => {});
   }, 60_000);
 
   $("#btn-poll").onclick = async () => {
@@ -415,6 +432,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     fxFilter = e.target.value;
     renderEffects();
   };
+
   $("#btn-off").onclick = async () => {
     if (!device) return toast("请先连接键盘", true);
     brightness = 0;
@@ -463,4 +481,16 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   await refreshDevices(true);
   setInterval(() => { if (!device) refreshDevices(true); }, 4000);
+
+  // 键盘休眠 / 掉线后 HID 句柄会失效，这里定期探活，
+  // 一旦发觉对方不在了就归零，交给上面的重扫重新连上。
+  setInterval(async () => {
+    if (!device) return;
+    try {
+      await invoke("read_info");
+    } catch {
+      setUnconnected();
+      toast("键盘已休眠或断开，正在等待重新连接…");
+    }
+  }, 5000);
 });

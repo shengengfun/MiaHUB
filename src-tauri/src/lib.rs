@@ -40,7 +40,7 @@ fn connect(state: State<'_, AppState>, path: String) -> Result<DeviceInfo, Strin
         .ok_or_else(|| "device not found (re-plug the USB cable?)".to_string())?;
     if !info.supported {
         return Err(format!(
-            "{} in {} mode is not supported yet — please connect it with the USB cable",
+            "{}（{}）没有暴露厂商控制集合，当前连接模式下无法控制。\n若是 2.4G / 蓝牙模式，请切回 USB 有线后再试。",
             info.name, info.connection
         ));
     }

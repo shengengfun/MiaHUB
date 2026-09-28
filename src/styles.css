@@ -753,7 +753,7 @@ button {
 }
 
 .board.fx-breathe {
-  animation: breathe 2.8s ease-in-out infinite;
+  animation: breathe var(--fx-dur, 2.2s) ease-in-out infinite;
 }
 
 @keyframes breathe {
@@ -769,7 +769,7 @@ button {
 }
 
 .board.fx-cycle {
-  animation: hue 7s linear infinite;
+  animation: hue calc(var(--fx-dur, 2.2s) * 2.6) linear infinite;
 }
 
 @keyframes hue {
@@ -788,7 +788,7 @@ button {
   inset: 0;
   background: linear-gradient(100deg, transparent 32%, rgba(255, 255, 255, .28) 50%, transparent 68%);
   background-size: 280% 100%;
-  animation: sweep 2.6s linear infinite;
+  animation: sweep var(--fx-dur, 2.2s) linear infinite;
   pointer-events: none;
   z-index: 3;
 }
@@ -884,6 +884,14 @@ button {
 
 .param-row.disabled {
   opacity: .38;
+}
+
+/* 静态灯效（如常亮）上速度真的没用，只提示，不禁用 */
+.param-row.hint .pr-name::after {
+  content: "· 不影响此灯效";
+  margin-left: 6px;
+  font-size: 11.5px;
+  color: var(--dim-2);
 }
 
 .param-row.disabled .toggle {
