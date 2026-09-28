@@ -19,6 +19,8 @@ pub struct DeviceInfo {
     pub supported: bool,
     /// whether this vid/pid is a model we have confirmed on real hardware
     pub verified: bool,
+    /// "feature" (wired) or "output" (2.4 GHz dongle)
+    pub link_mode: String,
     pub serial: String,
     /// opaque path used to open the device
     pub path: String,
@@ -120,6 +122,7 @@ fn build_info(
         connection,
         supported,
         verified,
+        link_mode: LinkMode::from_pid(info.product_id()).as_str().to_string(),
         serial: info.serial_number().unwrap_or("").to_string(),
         path: info.path().to_string_lossy().to_string(),
         input_path,
@@ -200,6 +203,22 @@ impl LinkMode {
             LinkMode::WiredFeature
         }
     }
+
+    /// "feature" | "output" — exposed to the frontend so it can skip features
+    /// the current link does not have (reading back, health probing).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LinkMode::WiredFeature => "feature",
+            LinkMode::DongleOutput => "output",
+        }
+    }
+
+    fn min_interval(self) -> std::time::Duration {
+        match self {
+            LinkMode::WiredFeature => protocol::MIN_SEND_INTERVAL,
+            LinkMode::DongleOutput => protocol::MIN_SEND_INTERVAL_24G,
+        }
+    }
 }
 
 /// An open control channel to a keyboard.
@@ -228,7 +247,13 @@ impl AulaDevice {
     }
 
     /// Send the 4 initialisation output reports used by the official tool.
+    ///
+    /// Only meaningful on the wired link: the dongle's report size is 65, so
+    /// these 64-byte writes cannot even be addressed to it.
     pub fn init(&self) -> Result<(), String> {
+        if self.mode == LinkMode::DongleOutput {
+            return Ok(());
+        }
         for frame in protocol::init_output_reports() {
             // failures here are not fatal: not every firmware revision accepts them
             let _ = self.dev.write(&frame);
@@ -287,9 +312,10 @@ impl AulaDevice {
     }
 
     fn wait_for_slot(&self) {
+        let interval = self.mode.min_interval();
         let elapsed = self.last_write.elapsed();
-        if elapsed < protocol::MIN_SEND_INTERVAL {
-            std::thread::sleep(protocol::MIN_SEND_INTERVAL - elapsed);
+        if elapsed < interval {
+            std::thread::sleep(interval - elapsed);
         }
     }
 

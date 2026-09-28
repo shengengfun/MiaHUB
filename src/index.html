@@ -63,10 +63,28 @@
       </div>
 
       <div class="device-cards" id="device-cards"></div>
+
+      <!-- 蓝牙模式：键盘只暴露标准 HID 服务，能读电量但不能控灯 -->
+      <div class="bt-panel" id="bt-panel">
+        <div class="bt-head">
+          <span class="bt-badge">蓝牙</span>
+          <span class="bt-title">AULA 键盘已配对</span>
+          <span class="bt-addr" id="bt-addr"></span>
+        </div>
+        <div class="bt-mid">
+          <div class="bt-pct" id="bt-pct">—</div>
+          <div class="bt-meter"><i id="bt-meter"></i></div>
+        </div>
+        <div class="bt-note">
+          蓝牙模式下键盘只暴露标准 HID 服务：读得到电量，<b>调不了灯</b>。<br>
+          要改灯效请切回 USB 有线或 2.4G 接收器。
+        </div>
+      </div>
+
       <div class="home-empty" id="home-empty">
         <div class="he-icon">⌨</div>
         <p>没有检测到设备</p>
-        <p class="dim">请用 USB 线连接 AULA 键盘（F3009 有线模式）</p>
+        <p class="dim">请用 USB 线连接 AULA 键盘，或插上 2.4G 接收器</p>
         <button class="btn" id="btn-rescan">重新扫描</button>
       </div>
     </div>
@@ -212,6 +230,8 @@
       <div class="set-left">
         <div class="set-label">连接状态</div>
         <div class="set-value" id="set-conn">未连接</div>
+        <div class="set-label" style="margin-top:26px">电量 <span class="dim2" style="font-size:11px">蓝牙信道</span></div>
+        <div class="set-value" id="set-batt">—</div>
         <div class="set-label" style="margin-top:26px">VID : PID</div>
         <div class="set-value" id="set-vidpid">—</div>
         <div class="set-label" style="margin-top:26px">序列号</div>

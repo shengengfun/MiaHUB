@@ -51,6 +51,13 @@ pub const INPUT_USAGE: u16 = 0x0006;
 /// Minimum interval between frames, as enforced by the official driver.
 pub const MIN_SEND_INTERVAL: Duration = Duration::from_millis(110);
 
+/// Minimum interval between 2.4 GHz output reports.
+///
+/// The official tool sleeps **1500 ms** (`push 0x5dc`) after sending a
+/// lighting envelope. Sending faster wedges the dongle's radio link and the
+/// keyboard starts dropping/sticking keys, so this is not just politeness.
+pub const MIN_SEND_INTERVAL_24G: Duration = Duration::from_millis(1500);
+
 /// One main-light effect (0-based index == the byte on the wire).
 #[derive(Debug, Clone, Copy, serde::Serialize)]
 pub struct Effect {

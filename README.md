@@ -19,10 +19,12 @@
 | 型号 | 连接方式 | 状态 |
 | --- | --- | --- |
 | AULA **F3009** | USB 有线（`1A2C:7F05` / `1A2C:7F07`） | ✅ 已支持 |
-| AULA F3009 | 2.4G 接收器（`1A2C:7FFF`） | ⛔ 待逆向（无 feature report） |
+| AULA **F3009** | 2.4G 接收器（`1A2C:7FFF`） | ✅ 已支持（灯效，65 字节 output report） |
+| AULA **F3009** | 蓝牙 / BLE（`046D:B34C`） | ☑️ 只读电量（无厂商通道，控不了灯） |
 | AULA **F2087Pro** | USB（`0C45:800A`）/ 2.4G（`05AC:024F`） | ⛔ 待逆向（不同 MCU） |
 
 > 型号识别基于 VID/PID 白名单，见 `src-tauri/src/protocol.rs`。
+> 蓝牙模式下 VID/PID 与有线/2.4G **完全不同**，且只暴露标准 HID 集合。
 
 ## 功能
 
@@ -41,6 +43,10 @@
 - **空闲熄灯**：停止操作 N 分钟后自动关灯，按下任意键立即恢复
 - **保持唤醒**：定期给键盘发一帧，避免休眠后吞掉第一个按键
 - **回报率实测**：直接读键盘输入管道，实测真实的报告率（Hz）与中位间隔
+- **电量显示**：蓝牙模式下读 Windows 缓存的 GATT 电量服务（`0x180F`）值
+  —— 这台键盘固件在 USB / 2.4G 通道**不回传**电量（厂商通道是只写的，
+  详见 [OpenALUA §10](https://github.com/shengengfun/OpenALUA/blob/main/docs/PROTOCOL.md#10-电量拿不到有据可查的负面结论)），
+  蓝牙是唯一能拿到电量的途径
 
 **其他**
 
@@ -61,8 +67,11 @@
 07 FF FF <效果序号 0-19> <亮度 0-5> <速度 0-2> <保留> <保留>
 ```
 
+2.4G 走的是另一条路：接收器没有 feature report，改用 **65 字节 output report**，
+里面包一层厂商信封（`00 BB AA 99 88 AA AA` + 载荷）。
+
 完整逆向说明见 [OpenALUA 的 PROTOCOL.md](https://github.com/shengengfun/OpenALUA/blob/main/docs/PROTOCOL.md)，
-其中包含官方软件的初始化序列、读写路径、宏/改键 XML 格式、以及实测复现步骤。
+其中包含官方软件的初始化序列、读写路径、2.4G 信封、蓝牙电量、宏/改键 XML 格式、以及实测复现步骤。
 
 ## 构建
 
@@ -91,15 +100,18 @@ src/                    前端（原生 HTML/CSS/JS，G HUB 风格深色界面�
   keyboard-layout.js    87 键坐标表（由官方 positions.xml 生成）
 src-tauri/              Rust 后端
   src/protocol.rs       协议定义：效果表、帧构造（含与抓包的对照测试）
-  src/hid.rs            HID 枚举、feature report 收发（100ms 节流）、回报率实测
+  src/hid.rs            HID 枚举、feature report / output report 收发、回报率实测
+  src/bt.rs             蓝牙电量：从 PnP 设备属性读 Windows 缓存的 GATT 0x180F 值
   src/lib.rs            Tauri 命令与状态
 ```
 
 ## 安全性
 
 - 不修改系统、不安装驱动、不常驻后台服务
-- 只通过 HID feature report 与键盘通信，写入间隔 ≥ 100 ms
-  （官方驱动同样有此限制，过快会导致固件卡顿）
+- 只通过 HID feature report / output report 与键盘通信，有线写入间隔 ≥ 110 ms
+  （官方驱动同样有此限制）；**2.4G 下逐帧间隔提高到 1500 ms**，与官方驱动一致，
+  否则会挤爆无线链路（表现为卡键）
+- 蓝牙电量是**只读取**设备属性，不建立任何连接、不写入
 - 逆向过程全部基于自有设备的被动抓包与官方软件行为观察，不包含任何厂商二进制
 
 ## 致谢与贡献者

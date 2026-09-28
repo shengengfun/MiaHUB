@@ -152,7 +152,6 @@ async function refreshDevices(auto = false) {
 
   const wrap = $("#device-cards");
   wrap.innerHTML = "";
-  $("#home-empty").classList.toggle("show", usable.length === 0);
 
   for (const d of usable) {
     const card = document.createElement("div");
@@ -169,7 +168,7 @@ async function refreshDevices(auto = false) {
             <rect x="3" y="4" width="14" height="6" rx="1" fill="currentColor" stroke="none"/>
             <path d="M23 5.5v3"/>
           </svg>
-          已连接
+          <span class="batt-txt">${battText()}</span>
         </span>
       </div>`;
     card.onclick = () => openDevice(d);
@@ -178,9 +177,76 @@ async function refreshDevices(auto = false) {
 
   if (!usable.length) {
     setUnconnected();
+    renderBt();
     return;
   }
+  renderBt();
   if (auto || !device) await connect(usable[0]);
+}
+
+/* 空态只在「既没有可控设备，也没有蓝牙设备」时出现 */
+function updateHomeEmpty() {
+  const hasCard = $("#device-cards").children.length > 0;
+  const hasBt = $("#bt-panel").classList.contains("show");
+  $("#home-empty").classList.toggle("show", !hasCard && !hasBt);
+}
+
+/* ── 蓝牙电量 ──────────────────────────────────────────────────────────
+   蓝牙（BLE HID）下键盘没有厂商通道，控灯/改键全部不可用；
+   但 Windows 通过标准 GATT 电量服务（0x180F）拿到了电量，缓存在设备节点属性里，
+   这里直接读它 —— 这也是这台键盘唯一能显示电量的途径（2.4G 厂商通道是只写的）。 */
+let bt = null;
+
+/* 卡片右下角那格：有电量就报电量，没就只报连接状态。
+   注意：这个电量只能来自蓝牙信道（固件在 USB / 2.4G 下不回传），
+   所以卡片显示「接收器」时它其实是上一次蓝牙连接的读数 —— 用 ≈ 标出来。 */
+function battText() {
+  if (!bt || typeof bt.percent !== "number") return "已连接";
+  return `${bt.percent}%${bt.charging ? " ⚡" : ""}`;
+}
+
+function battTitle() {
+  return bt && typeof bt.percent === "number"
+    ? "电量来自蓝牙信道的 GATT 电量服务（0x180F）。USB / 2.4G 通道固件不回传电量。"
+    : "固件在 USB / 2.4G 通道不回传电量；切到蓝牙模式并配对后即可显示";
+}
+
+function renderBt() {
+  const pct = bt && typeof bt.percent === "number" ? bt.percent : null;
+  const known = pct !== null;
+  const panel = $("#bt-panel");
+  // 只有在没有可控设备时才把蓝牙面板当主角展示
+  const asPanel = known && $("#device-cards").children.length === 0;
+
+  panel.classList.toggle("show", asPanel);
+  if (asPanel) {
+    $("#bt-pct").innerHTML = `${pct}<span>%</span>`;
+    $("#bt-addr").textContent = bt.address ? "· " + bt.address : "";
+    const bar = $("#bt-meter");
+    bar.style.width = `${Math.max(2, Math.min(100, pct))}%`;
+    bar.className = pct <= 15 ? "low" : "";
+  }
+
+  // 设备卡片上的电池格跟着刷新
+  $$(".dcard-batt").forEach((el) => {
+    el.querySelector(".batt-txt").textContent = battText();
+    el.title = battTitle();
+    el.classList.toggle("low", known && pct <= 15);
+  });
+
+  const el = $("#set-batt");
+  el.textContent = known ? `${pct}%${bt.charging ? " · 充电中" : ""}` : "—";
+  el.title = battTitle();
+  updateHomeEmpty();
+}
+
+async function refreshBt() {
+  try {
+    bt = await invoke("bt_battery");
+  } catch {
+    bt = null;
+  }
+  renderBt();
 }
 
 function setUnconnected() {
@@ -268,16 +334,33 @@ function renderEffects() {
   rowSpeed.querySelector(".toggle").classList.add("on");
 }
 
+/* 发送会合并：2.4G 下每帧要间隔 1500ms，连点效果时不必逐帧排队，
+   只需要把最后一次的最终值发出去 */
+let sending = false;
+let sendPending = false;
+
 async function push() {
   if (!device) return;
   // 任何手动的设置动作都算「有操作」，取消空闲熄灯
   lastActivity = Date.now();
   idleDimmed = false;
-  const spd = speed;
+  if (sending) {
+    sendPending = true;
+    return;
+  }
+  sending = true;
   try {
-    await invoke("set_lighting", { effect, brightness, speed: spd });
-  } catch (e) {
-    toast(String(e), true);
+    do {
+      sendPending = false;
+      const spd = speed;
+      try {
+        await invoke("set_lighting", { effect, brightness, speed: spd });
+      } catch (e) {
+        toast(String(e), true);
+      }
+    } while (sendPending);
+  } finally {
+    sending = false;
   }
 }
 
@@ -311,9 +394,11 @@ function initPowerControls() {
     toast(keepAwake ? "已开启保持唤醒，每 60 秒续一次" : "已关闭保持唤醒");
   };
 
-  // idle watchdog: dim the backlight after N minutes without input
+  // idle watchdog: dim the backlight after N minutes without input.
+  // Needs the boot-keyboard input collection, which the 2.4 GHz dongle does
+  // not let us read from user mode — so this only runs on the wired link.
   setInterval(async () => {
-    if (!device || idleMinutes === 0) {
+    if (!device || idleMinutes === 0 || device.link_mode !== "feature") {
       if (idleDimmed) {
         idleDimmed = false;
         push();
@@ -480,12 +565,17 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   await refreshDevices(true);
+  await refreshBt();
   setInterval(() => { if (!device) refreshDevices(true); }, 4000);
+  // 电量变得很慢，一分钟一次足够了
+  setInterval(refreshBt, 60_000);
 
   // 键盘休眠 / 掉线后 HID 句柄会失效，这里定期探活，
   // 一旦发觉对方不在了就归零，交给上面的重扫重新连上。
+  // 注意：2.4G 通道没有 feature report，read_info 必然失败 —— 那不是掉线，
+  // 如果在这里误判就会变成每 5 秒重连一次，直接把无线链路挤爆（表现为卡键）。
   setInterval(async () => {
-    if (!device) return;
+    if (!device || device.link_mode !== "feature") return;
     try {
       await invoke("read_info");
     } catch {

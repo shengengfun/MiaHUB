@@ -1,5 +1,6 @@
 //! MiaKeyDrv — open-source manager for AULA keyboards.
 
+mod bt;
 mod hid;
 mod protocol;
 
@@ -116,7 +117,8 @@ pub fn run() {
             set_light_off,
             read_info,
             measure_polling,
-            probe_activity
+            probe_activity,
+            bt::bt_battery
         ])
         .run(tauri::generate_context!())
         .expect("error while running MiaKeyDrv");
